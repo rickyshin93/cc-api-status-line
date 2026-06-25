@@ -1,12 +1,12 @@
 #!/bin/sh
-# TDD harness for assets/statusline.sh. Runs the statusline under /bin/sh with
+# TDD harness for assets/statusline.mjs. Runs the statusline under `node` with
 # fixture JSON and asserts exit code + (ANSI-stripped) output substrings.
 # Usage: sh tests/run.sh   (exits non-zero if any assertion fails)
 set -u
 
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-SCRIPT="$DIR/../assets/statusline.sh"
-SH=${TEST_SH:-/bin/sh}
+SCRIPT="$DIR/../assets/statusline.mjs"
+NODE=${TEST_NODE:-node}
 
 pass=0
 fail=0
@@ -15,14 +15,14 @@ strip() { sed 's/\x1b\[[0-9;]*m//g'; }
 
 # run NAME JSON  -> sets $OUT (stripped), $RAW, $EC
 run() {
-  RAW=$(printf '%s' "$2" | "$SH" "$SCRIPT" 2>/dev/null)
+  RAW=$(printf '%s' "$2" | "$NODE" "$SCRIPT" 2>/dev/null)
   EC=$?
   OUT=$(printf '%s' "$RAW" | strip)
 }
 
 # run_env NAME "VAR=val VAR2=val2" JSON  -> same, with env vars set
 run_env() {
-  RAW=$(printf '%s' "$3" | env $2 "$SH" "$SCRIPT" 2>/dev/null)
+  RAW=$(printf '%s' "$3" | env $2 "$NODE" "$SCRIPT" 2>/dev/null)
   EC=$?
   OUT=$(printf '%s' "$RAW" | strip)
 }
@@ -52,7 +52,7 @@ printf '{"type":"assistant","timestamp":"%s","message":{"usage":{"cache_creation
 TF_COLD=$(mktemp)
 printf '{"type":"assistant","timestamp":"2000-01-01T00:00:00.000Z","message":{"usage":{"cache_creation":{"ephemeral_5m_input_tokens":500}}}}\n' > "$TF_COLD"
 
-echo "statusline tests (SH=$SH)"
+echo "statusline tests (NODE=$NODE)"
 
 # 1. full, no git/cache
 echo "[case] full"
@@ -146,6 +146,25 @@ lw=${#OUT}
 echo "[case] cfg-bad-width"
 run_env badw "CCSL_BAR_WIDTH=abc" "$FULL"
 assert_exit0 badw; assert_nonempty badw
+
+# 12. Windows-style cwd (backslashes) -> dir segment is the basename
+echo "[case] win-path"
+run win '{"model":{"display_name":"Opus"},"workspace":{"current_dir":"C:\\Users\\foo\\my-app"},"context_window":{"used_percentage":10}}'
+assert_exit0 win; assert_nonempty win
+assert_has win "my-app"
+assert_lacks win "Users"          # full path not leaked into the dir segment
+
+# 13. bad JSON on stdin -> degrades, exits 0, still renders the bar
+echo "[case] bad-json"
+run bad 'not json {{{'
+assert_exit0 bad; assert_nonempty bad
+assert_has bad "0%"
+
+# 14. empty stdin -> degrades, exits 0
+echo "[case] empty-stdin"
+run estdin ''
+assert_exit0 estdin; assert_nonempty estdin
+assert_has estdin "0%"
 
 # ---- cleanup ----
 rm -rf "$GITDIR" "$CLEANDIR" "$TF_1H" "$TF_COLD"
