@@ -1,0 +1,8 @@
+node_modules/
+bin/
+*.log
+.DS_Store
+
+# local dev / working docs — kept locally, excluded from the public repo
+CLAUDE.md
+STATUS.md

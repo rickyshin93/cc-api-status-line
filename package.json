@@ -1,0 +1,49 @@
+{
+  "name": "@rockshin/cc-api-status-line",
+  "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "description": "A fast, jq-powered statusline for Claude Code: model, cwd, git branch, cost, context bar, session time, version, and prompt-cache TTL.",
+  "type": "module",
+  "bin": {
+    "cc-api-status-line": "bin/cli.js"
+  },
+  "files": [
+    "bin/cli.js",
+    "assets/statusline.sh",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "dev": "bun run src/cli.ts",
+    "test": "sh tests/run.sh",
+    "prepublishOnly": "bun run build && bun run test"
+  },
+  "keywords": [
+    "claude-code",
+    "claude",
+    "statusline",
+    "status-line",
+    "cli",
+    "jq"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "rickyshin93 <rickyshin@foxmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rickyshin93/cc-api-status-line.git"
+  },
+  "homepage": "https://github.com/rickyshin93/cc-api-status-line#readme",
+  "bugs": {
+    "url": "https://github.com/rickyshin93/cc-api-status-line/issues"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}
