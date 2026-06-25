@@ -1,17 +1,17 @@
 {
   "name": "@rockshin/cc-api-status-line",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publishConfig": {
     "access": "public"
   },
-  "description": "A fast, jq-powered statusline for Claude Code: model, cwd, git branch, cost, context bar, session time, version, and prompt-cache TTL.",
+  "description": "A fast, zero-dependency statusline for Claude Code (macOS/Linux/Windows): model, cwd, git branch, cost, context bar, session time, version, and prompt-cache TTL.",
   "type": "module",
   "bin": {
     "cc-api-status-line": "bin/cli.js"
   },
   "files": [
     "bin/cli.js",
-    "assets/statusline.sh",
+    "assets/statusline.mjs",
     "README.md",
     "LICENSE"
   ],
@@ -27,7 +27,8 @@
     "statusline",
     "status-line",
     "cli",
-    "jq"
+    "cross-platform",
+    "windows"
   ],
   "engines": {
     "node": ">=18"

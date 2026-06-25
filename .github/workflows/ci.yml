@@ -7,7 +7,11 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     steps:
@@ -23,9 +27,10 @@ jobs:
       - name: Build
         run: bun run build
 
-      # jq and git are preinstalled on ubuntu-latest runners
-      - name: Test (POSIX sh / dash)
-        run: bun run test
-
-      - name: Test (bash)
-        run: TEST_SH=bash sh tests/run.sh
+      # node (the renderer's only runtime) and git are preinstalled on every
+      # runner. Drive the harness under bash — Git Bash on windows-latest — which
+      # in turn runs `node assets/statusline.mjs`. This is the cross-platform
+      # regression guard: the renderer is exercised on real Windows here.
+      - name: Test
+        run: bash tests/run.sh
+        shell: bash

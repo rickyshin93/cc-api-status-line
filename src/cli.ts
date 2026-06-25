@@ -1,6 +1,5 @@
 import { execSync } from "node:child_process";
 import {
-  chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
@@ -13,12 +12,19 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ASSET = join(HERE, "..", "assets", "statusline.sh");
+const ASSET = join(HERE, "..", "assets", "statusline.mjs");
 
 const CLAUDE_DIR = join(homedir(), ".claude");
-const SCRIPT_DEST = join(CLAUDE_DIR, "cc-api-status-line.sh");
-const SETTINGS = join(CLAUDE_DIR, "settings.json");
-const COMMAND = `sh ${SCRIPT_DEST}`;
+const SCRIPT_DEST = join(CLAUDE_DIR, "cc-api-status-line.mjs");
+const LEGACY_DEST = join(CLAUDE_DIR, "cc-api-status-line.sh"); // pre-Node shell renderer
+
+// Path written into settings.json must use forward slashes: on Windows, Claude
+// Code runs the statusLine command through Git Bash (or PowerShell), and Git Bash
+// eats unquoted backslashes as escapes. Forward slashes work on every platform.
+const toPosix = (p: string) => p.replace(/\\/g, "/");
+const SCRIPT_POSIX = toPosix(SCRIPT_DEST);
+const LEGACY_POSIX = toPosix(LEGACY_DEST);
+const COMMAND = `node "${SCRIPT_POSIX}"`;
 
 const C = {
   green: (s: string) => `\x1b[32m${s}\x1b[0m`,
@@ -28,14 +34,27 @@ const C = {
   cyan: (s: string) => `\x1b[36m${s}\x1b[0m`,
 };
 
-function hasJq(): boolean {
+// Does `node` resolve on PATH? The renderer is invoked as `node <script>`, so the
+// shell that runs the statusline must find it. (We're running under Node now, but
+// it may have been launched by absolute path — this checks PATH resolution.)
+function hasNodeOnPath(): boolean {
   try {
-    execSync("jq --version", { stdio: "ignore" });
+    execSync("node --version", { stdio: "ignore" });
     return true;
   } catch {
     return false;
   }
 }
+
+// Treat a settings command as ours if it references our managed script path
+// (current .mjs or the legacy .sh), tolerant of path separator differences.
+function isOurCommand(command: string | undefined): boolean {
+  if (!command) return false;
+  const norm = toPosix(command);
+  return norm.includes(SCRIPT_POSIX) || norm.includes(LEGACY_POSIX);
+}
+
+const SETTINGS = join(CLAUDE_DIR, "settings.json");
 
 function readSettings(): Record<string, unknown> {
   if (!existsSync(SETTINGS)) return {};
@@ -56,20 +75,24 @@ function writeSettings(obj: Record<string, unknown>): void {
 function init(): void {
   mkdirSync(CLAUDE_DIR, { recursive: true });
 
-  if (!hasJq()) {
+  if (!hasNodeOnPath()) {
     console.error(
       C.yellow(
-        "! jq not found on PATH. The statusline needs it.\n" +
-          "  macOS:  brew install jq\n" +
-          "  Debian: sudo apt-get install jq\n" +
-          "  Continuing setup anyway — install jq before it will render.",
+        "! `node` not found on PATH. The statusline runs as `node <script>`.\n" +
+          "  Ensure Node.js is installed and on PATH (it is for anyone using npx/bunx),\n" +
+          "  otherwise the statusline won't render.",
       ),
     );
   }
 
   copyFileSync(ASSET, SCRIPT_DEST);
-  chmodSync(SCRIPT_DEST, 0o755);
   console.log(C.green("✓") + ` script installed → ${SCRIPT_DEST}`);
+
+  // Clean up the legacy shell renderer if a previous version left one behind.
+  if (existsSync(LEGACY_DEST)) {
+    rmSync(LEGACY_DEST);
+    console.log(C.dim(`  removed legacy ${LEGACY_DEST}`));
+  }
 
   const settings = readSettings();
   const prev = settings.statusLine as { command?: string } | undefined;
@@ -92,7 +115,7 @@ function init(): void {
 function uninstall(): void {
   const settings = readSettings();
   const sl = settings.statusLine as { command?: string } | undefined;
-  if (sl?.command === COMMAND) {
+  if (isOurCommand(sl?.command)) {
     delete settings.statusLine;
     writeSettings(settings);
     console.log(C.green("✓") + " removed statusLine from settings.json");
@@ -101,9 +124,11 @@ function uninstall(): void {
       C.dim("· settings.json statusLine not ours (or absent) — left untouched"),
     );
   }
-  if (existsSync(SCRIPT_DEST)) {
-    rmSync(SCRIPT_DEST);
-    console.log(C.green("✓") + ` removed ${SCRIPT_DEST}`);
+  for (const f of [SCRIPT_DEST, LEGACY_DEST]) {
+    if (existsSync(f)) {
+      rmSync(f);
+      console.log(C.green("✓") + ` removed ${f}`);
+    }
   }
   console.log("\n" + C.cyan("Uninstalled.") + " Restart Claude Code to apply.");
 }
@@ -112,7 +137,7 @@ function help(): void {
   console.log(`cc-api-status-line — statusline for Claude Code
 
 Usage:
-  npx cc-api-status-line <command>
+  npx @rockshin/cc-api-status-line <command>
 
 Commands:
   init        Install the script and wire it into ~/.claude/settings.json
@@ -120,7 +145,7 @@ Commands:
   help        Show this message
 
 After init, start a new Claude Code session to see the statusline.
-Requires: jq on PATH.`);
+Zero external dependencies — needs only Node.js (already present via npx/bunx).`);
 }
 
 const cmd = process.argv[2];
