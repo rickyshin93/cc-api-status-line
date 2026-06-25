@@ -37,20 +37,33 @@ assert_lacks()    { case "$OUT" in *"$2"*) bad "$1: should NOT contain '$2' (got
 assert_raw_has()  { case "$RAW" in *"$2"*) ok "$1: raw contains '$2'" ;; *) bad "$1: raw missing '$2'" ;; esac; }
 
 # ---- fixtures ----
+# mktemp under Git Bash (Windows) yields MSYS virtual paths like /tmp/... that the
+# native-Windows `node` process can't resolve. Convert paths we hand to node (via
+# JSON) into a node-resolvable form with cygpath; on macOS/Linux cygpath is absent
+# and we pass through unchanged. The renderer itself is fine — real Claude Code
+# sends native Windows paths (see the win-path case), only this harness uses mktemp.
+to_node_path() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi
+}
+
 GITDIR=$(mktemp -d)
 ( cd "$GITDIR" && git init -q && git checkout -q -b feature/EXAMPLE-1234-long-descriptive-release-merge \
   && echo x > f && git add f && git -c user.email=a@b -c user.name=a commit -qm i && echo y >> f ) >/dev/null 2>&1
+GITDIR_N=$(to_node_path "$GITDIR")
 
 CLEANDIR=$(mktemp -d)
 ( cd "$CLEANDIR" && git init -q && git checkout -q -b main \
   && echo x > f && git add f && git -c user.email=a@b -c user.name=a commit -qm i ) >/dev/null 2>&1
+CLEANDIR_N=$(to_node_path "$CLEANDIR")
 
 TF_1H=$(mktemp)
 NOW=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
 printf '{"type":"assistant","timestamp":"%s","message":{"usage":{"cache_creation":{"ephemeral_1h_input_tokens":500}}}}\n' "$NOW" > "$TF_1H"
+TF_1H_N=$(to_node_path "$TF_1H")
 
 TF_COLD=$(mktemp)
 printf '{"type":"assistant","timestamp":"2000-01-01T00:00:00.000Z","message":{"usage":{"cache_creation":{"ephemeral_5m_input_tokens":500}}}}\n' > "$TF_COLD"
+TF_COLD_N=$(to_node_path "$TF_COLD")
 
 echo "statusline tests (NODE=$NODE)"
 
@@ -91,7 +104,7 @@ assert_raw_has noctx "[100m"   # empty-track background code present
 
 # 4. git: long branch truncated + dirty
 echo "[case] git-long-dirty"
-run git "$(printf '{"model":{"display_name":"Opus"},"workspace":{"current_dir":"%s"},"context_window":{"used_percentage":50}}' "$GITDIR")"
+run git "$(printf '{"model":{"display_name":"Opus"},"workspace":{"current_dir":"%s"},"context_window":{"used_percentage":50}}' "$GITDIR_N")"
 assert_exit0 git; assert_nonempty git
 assert_has git "(..."             # truncation marker, inside opening paren
 assert_has git "release-merge)"   # tail preserved, inside closing paren
@@ -100,21 +113,21 @@ assert_lacks git "*"                   # dirty shown via color now, not an aster
 
 # 5. git clean short branch (no dirty marker, no ellipsis)
 echo "[case] git-clean"
-run clean "$(printf '{"model":{"display_name":"Opus"},"workspace":{"current_dir":"%s"},"context_window":{"used_percentage":50}}' "$CLEANDIR")"
+run clean "$(printf '{"model":{"display_name":"Opus"},"workspace":{"current_dir":"%s"},"context_window":{"used_percentage":50}}' "$CLEANDIR_N")"
 assert_exit0 clean
 assert_has clean "main"
 assert_lacks clean "*"
 
 # 6. cache 1h active
 echo "[case] cache-1h"
-run c1h "$(printf '{"model":{"display_name":"Opus"},"context_window":{"used_percentage":10},"transcript_path":"%s"}' "$TF_1H")"
+run c1h "$(printf '{"model":{"display_name":"Opus"},"context_window":{"used_percentage":10},"transcript_path":"%s"}' "$TF_1H_N")"
 assert_exit0 c1h
 assert_has c1h "cache"
 assert_has c1h "(1h)"
 
 # 7. cache cold
 echo "[case] cache-cold"
-run cold "$(printf '{"model":{"display_name":"Opus"},"context_window":{"used_percentage":10},"transcript_path":"%s"}' "$TF_COLD")"
+run cold "$(printf '{"model":{"display_name":"Opus"},"context_window":{"used_percentage":10},"transcript_path":"%s"}' "$TF_COLD_N")"
 assert_exit0 cold
 assert_has cold "COLD"
 
