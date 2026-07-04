@@ -73,7 +73,7 @@ const cfg = (k) => (rc[k] !== undefined ? rc[k] : process.env[k]);
 
 let BAR_W = cfg("CCSL_BAR_WIDTH");
 BAR_W = BAR_W && /^[0-9]+$/.test(BAR_W) ? Number(BAR_W) : 18; // guard: non-neg int
-const ORDER = (cfg("CCSL_ORDER") || "model,cost,ctx,cache,git,time").replace(
+const ORDER = (cfg("CCSL_ORDER") || "model,cost,ctx,cache,git,time,effort").replace(
   /\s/g,
   "",
 );
@@ -104,6 +104,34 @@ function git(args) {
 
 // model (cyan) — always at least "Claude"
 let s_model = model ? `${CYAN}${model}${RST}` : "";
+
+// effort (label gray, value color-scaled to intensity) — read from CC settings.
+// CC does NOT send effort in the stdin JSON; it lives in settings.json's
+// `effortLevel`. Merge three layers (user → project → project-local), later wins,
+// matching CC's own precedence. Env CCSL_EFFORT wins over all for override/tests.
+function readEffort() {
+  const files = [join(homedir(), ".claude", "settings.json")];
+  if (cwd) {
+    files.push(join(cwd, ".claude", "settings.json"));
+    files.push(join(cwd, ".claude", "settings.local.json"));
+  }
+  let e = "";
+  for (const p of files) {
+    if (!existsSync(p)) continue;
+    try {
+      const j = JSON.parse(readFileSync(p, "utf8"));
+      if (typeof j.effortLevel === "string" && j.effortLevel) e = j.effortLevel;
+    } catch { /* skip malformed */ }
+  }
+  return e;
+}
+const EFFORT_COLOR = { low: 32, medium: 32, high: 33, xhigh: 33, max: 31 };
+const effort = (cfg("CCSL_EFFORT") || readEffort()).toLowerCase();
+let s_effort = "";
+if (effort) {
+  const ec = EFFORT_COLOR[effort] || 37;
+  s_effort = `${GRAY}effort${RST} ${ESC}[${ec}m${effort}${RST}`;
+}
 
 // context bar + % — always renders (absent context → 0%)
 // bar = background-color spaces (no glyphs → identical on every font/terminal)
@@ -221,6 +249,7 @@ function lastCacheRow(path) {
 
 // ===== apply CCSL_HIDE (atoms; git=dir+branch, time=dur+ver) =====
 if (isHidden("model")) s_model = "";
+if (isHidden("effort")) s_effort = "";
 if (isHidden("cost")) s_cost = "";
 if (isHidden("ctx")) s_ctx = "";
 if (isHidden("cache")) s_cache = "";
@@ -240,6 +269,7 @@ if (isHidden("time")) {
 // ===== assemble in CCSL_ORDER (unknown tokens ignored; empty segments skipped) =====
 const segMap = {
   model: [s_model],
+  effort: [s_effort],
   cost: [s_cost],
   ctx: [s_ctx],
   cache: [s_cache],

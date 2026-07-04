@@ -5,7 +5,7 @@ A fast, **zero-dependency** [statusline](https://docs.claude.com/en/docs/claude-
 ![cc-api-status-line](https://raw.githubusercontent.com/rickyshin93/cc-api-status-line/main/docs/screenshot.png)
 
 ```
-Opus 4.8 (1M context) │ $ 4.0488 │ ███████░░░░░░░░░░░ 42% │ cache 59m59s (1h) │ my-app (develop) │ 11m  v2.1.181
+Opus 4.8 (1M context) │ $ 4.0488 │ ███████░░░░░░░░░░░ 42% │ cache 59m59s (1h) │ my-app (develop) │ 11m  v2.1.181 │ effort xhigh
 ```
 
 - **Zero dependencies** — a single Node script (no `jq`, no shell tricks). If you can run `npx`, you can run this. Native on macOS, Linux, and Windows.
@@ -19,6 +19,7 @@ Opus 4.8 (1M context) │ $ 4.0488 │ ███████░░░░░░�
 | segment | shows | color |
 | --- | --- | --- |
 | model | active model display name | cyan |
+| effort | reasoning effort (`low`/`medium`/`high`/`xhigh`/`max`) from CC's `effortLevel` | green `low`/`medium` · yellow `high`/`xhigh` · red `max` |
 | cost | session cost in USD (`$ 0.0000`) | yellow |
 | ctx | context-window usage bar + % | green `<50%` · yellow `<80%` · red above |
 | cache | prompt-cache TTL countdown (`COLD` when expired) | green, red when expiring |
@@ -55,19 +56,22 @@ script reads it on every render; values there override the process env):
 ```sh
 # ~/.claude/cc-api-status-line.rc
 CCSL_BAR_WIDTH=12
-CCSL_ORDER="model,cost,ctx,cache,git,time"
+CCSL_ORDER="model,cost,ctx,cache,git,time,effort"
 CCSL_HIDE="version,duration"
 ```
 
 | variable | default | meaning |
 | --- | --- | --- |
 | `CCSL_BAR_WIDTH` | `18` | width of the context bar, in cells |
-| `CCSL_ORDER` | `model,cost,ctx,cache,git,time` | order of `│`-separated groups; omit a token to drop that whole group; unknown tokens are ignored |
+| `CCSL_ORDER` | `model,cost,ctx,cache,git,time,effort` | order of `│`-separated groups; omit a token to drop that whole group; unknown tokens are ignored |
 | `CCSL_HIDE` | *(empty)* | comma list of parts to hide |
+| `CCSL_EFFORT` | *(read from settings)* | override effort value (e.g. `high`); mostly for testing — normally the segment picks up CC's `effortLevel` from `settings.json` automatically |
 
-**`CCSL_ORDER` tokens:** `model`, `cost`, `ctx`, `cache`, `git` (dir + branch), `time` (duration + version).
+**`CCSL_ORDER` tokens:** `model`, `cost`, `ctx`, `cache`, `git` (dir + branch), `time` (duration + version), `effort`.
 
 **`CCSL_HIDE` tokens:** the order tokens above, plus the finer-grained `dir`, `branch`, `duration`, `version`. Hiding `git` hides both dir and branch; hiding `time` hides both duration and version.
+
+**effort source:** Claude Code does not send effort in the statusline stdin JSON — it lives in `effortLevel` inside `settings.json`. The segment reads three layers in CC's own precedence order: `~/.claude/settings.json` → project `.claude/settings.json` → project `.claude/settings.local.json` (later wins). If none set it, the segment is empty and disappears from the line.
 
 ### Examples
 

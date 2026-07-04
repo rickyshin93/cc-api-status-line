@@ -179,8 +179,55 @@ run estdin ''
 assert_exit0 estdin; assert_nonempty estdin
 assert_has estdin "0%"
 
+# 15. effort: read from user ~/.claude/settings.json (homedir override via HOME)
+echo "[case] effort-user"
+FAKE_HOME=$(mktemp -d)
+mkdir -p "$FAKE_HOME/.claude"
+printf '{"effortLevel":"xhigh"}\n' > "$FAKE_HOME/.claude/settings.json"
+FAKE_HOME_N=$(to_node_path "$FAKE_HOME")
+run_env eff "HOME=$FAKE_HOME_N USERPROFILE=$FAKE_HOME_N CCSL_ORDER=effort" '{}'
+assert_exit0 eff
+assert_has eff "effort xhigh"
+
+# 16. effort: project .claude/settings.local.json overrides user settings
+echo "[case] effort-project-override"
+PROJDIR=$(mktemp -d)
+mkdir -p "$PROJDIR/.claude"
+printf '{"effortLevel":"low"}\n' > "$PROJDIR/.claude/settings.local.json"
+PROJDIR_N=$(to_node_path "$PROJDIR")
+run_env effproj "HOME=$FAKE_HOME_N USERPROFILE=$FAKE_HOME_N CCSL_ORDER=effort" \
+  "$(printf '{"workspace":{"current_dir":"%s"}}' "$PROJDIR_N")"
+assert_exit0 effproj
+assert_has   effproj "effort low"
+assert_lacks effproj "xhigh"
+
+# 17. effort: CCSL_EFFORT env wins over settings.json
+echo "[case] effort-env-override"
+run_env effenv "HOME=$FAKE_HOME_N USERPROFILE=$FAKE_HOME_N CCSL_EFFORT=max CCSL_ORDER=effort" '{}'
+assert_exit0 effenv
+assert_has effenv "effort max"
+
+# 18. effort: absent settings -> no effort segment
+echo "[case] effort-absent"
+EMPTY_HOME=$(mktemp -d)
+EMPTY_HOME_N=$(to_node_path "$EMPTY_HOME")
+run_env effabs "HOME=$EMPTY_HOME_N USERPROFILE=$EMPTY_HOME_N CCSL_ORDER=model,effort,ctx" \
+  '{"model":{"display_name":"Opus"},"context_window":{"used_percentage":10}}'
+assert_exit0 effabs
+assert_lacks effabs "effort"
+assert_has   effabs "Opus"
+assert_has   effabs "10%"
+
+# 19. effort: CCSL_HIDE=effort suppresses it
+echo "[case] effort-hide"
+run_env effhide "HOME=$FAKE_HOME_N USERPROFILE=$FAKE_HOME_N CCSL_ORDER=effort,ctx CCSL_HIDE=effort" \
+  '{"context_window":{"used_percentage":10}}'
+assert_exit0 effhide
+assert_lacks effhide "effort"
+assert_has   effhide "10%"
+
 # ---- cleanup ----
-rm -rf "$GITDIR" "$CLEANDIR" "$TF_1H" "$TF_COLD"
+rm -rf "$GITDIR" "$CLEANDIR" "$TF_1H" "$TF_COLD" "$FAKE_HOME" "$PROJDIR" "$EMPTY_HOME"
 
 echo
 printf 'pass=%d fail=%d\n' "$pass" "$fail"
