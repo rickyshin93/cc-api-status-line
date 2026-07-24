@@ -7,8 +7,8 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -24,7 +24,52 @@ const LEGACY_DEST = join(CLAUDE_DIR, "cc-api-status-line.sh"); // pre-Node shell
 const toPosix = (p: string) => p.replace(/\\/g, "/");
 const SCRIPT_POSIX = toPosix(SCRIPT_DEST);
 const LEGACY_POSIX = toPosix(LEGACY_DEST);
-const COMMAND = `node "${SCRIPT_POSIX}"`;
+
+// Pin the absolute path of the node that ran `init` into the settings command.
+// A bare `node` only works while the render-time PATH happens to resolve it —
+// on Windows the PATH of the installing terminal often never reaches GUI/
+// freshly-spawned shells (portable node, per-shell PATH exports, version
+// managers), so the statusline silently dies after reboot / in a new terminal.
+// Quoted to survive spaces (e.g. C:/Program Files/nodejs/); POSIX paths +
+// double quotes parse identically under Git Bash, PowerShell and cmd.
+const BARE_NODE = "node";
+
+// Paths that won't exist for long — resolveNodeRef falls back to bare `node`
+// for these, since baking a path that's about to vanish is worse than no path:
+//  - npx/bunx cache: `npm-cache/_npx/...`, `bunx-501/...` (package-extraction
+//    caches; auto-cleaned by npm/bun, TTL unbounded on Windows)
+//  - per-shell version-manager shims: fnm's `fnm_multishells/<rand>/node.exe`
+//    and nvs's `nvs/default/...` are ephemeral per-session links — nvs's
+//    `current/`, by contrast, is a stable dir link, so it's kept
+//  - temp dirs: OS tmp or any `*/tmp/...` segment
+// Deliberately NOT volatile: stable manager dirs (nvm/n/fnm node-versions/
+// volta tools/nvs current), even though switching versions deletes them —
+// the renderer only uses built-ins, so any surviving old node runs it fine,
+// and showing the nudge on a working setup would be noise.
+function isVolatileNodePath(posixPath: string): boolean {
+  const p = posixPath.toLowerCase();
+  const seg = p.split("/");
+  if (p.startsWith(`${toPosix(tmpdir()).toLowerCase()}/`)) return true;
+  if (seg.includes("tmp")) return true;
+  if (p.includes("npm-cache/_npx/") || p.includes("_bunx/") || seg.some((s) => s.startsWith("bunx-"))) return true;
+  if (p.includes("/fnm_multishells/") || p.includes("/nvs/default/")) return true;
+  return false;
+}
+
+function resolveNodeRef(): { ref: string; pinned: boolean } {
+  const execPosix = toPosix(process.execPath);
+  // `bun run src/cli.ts` reports execPath as the bun binary — bun can't run the
+  // renderer for end users, so fall back to bare `node` (dev installs use
+  // `bun run dev init`; real users come through npx → node).
+  if (basename(execPosix).replace(/\.exe$/i, "") === "bun") {
+    return { ref: BARE_NODE, pinned: false };
+  }
+  if (isVolatileNodePath(execPosix)) return { ref: BARE_NODE, pinned: false };
+  return { ref: `"${execPosix}"`, pinned: true };
+}
+
+const NODE_REF = resolveNodeRef();
+const COMMAND = `${NODE_REF.ref} "${SCRIPT_POSIX}"`;
 
 const C = {
   green: (s: string) => `\x1b[32m${s}\x1b[0m`,
@@ -75,12 +120,21 @@ function writeSettings(obj: Record<string, unknown>): void {
 function init(): void {
   mkdirSync(CLAUDE_DIR, { recursive: true });
 
-  if (!hasNodeOnPath()) {
+  if (!NODE_REF.pinned && !hasNodeOnPath()) {
     console.error(
       C.yellow(
-        "! `node` not found on PATH. The statusline runs as `node <script>`.\n" +
-          "  Ensure Node.js is installed and on PATH (it is for anyone using npx/bunx),\n" +
-          "  otherwise the statusline won't render.",
+        "! `node` not found on PATH, and the Node running this installer lives in a\n" +
+          "  volatile location (npx cache / temp), so its path can't be baked into the\n" +
+          "  settings command. The statusline runs as `node <script>` — install Node.js\n" +
+          "  system-wide (nodejs.org) so any future shell can resolve it.",
+      ),
+    );
+  } else if (!NODE_REF.pinned) {
+    console.log(
+      C.dim(
+        "· node lives in a volatile location (npx cache / temp) — using PATH-based\n" +
+          "  `node` in the settings command. If the statusline disappears after a\n" +
+          "  reboot/new terminal, install Node system-wide and re-run init.",
       ),
     );
   }
