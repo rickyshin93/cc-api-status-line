@@ -226,6 +226,30 @@ assert_exit0 effhide
 assert_lacks effhide "effort"
 assert_has   effhide "10%"
 
+# 20. effort: live stdin effort.level (CC v2.1.119+) renders
+echo "[case] effort-stdin"
+run_env effstdin "HOME=$EMPTY_HOME_N USERPROFILE=$EMPTY_HOME_N CCSL_ORDER=effort" \
+  '{"effort":{"level":"max"}}'
+assert_exit0 effstdin
+assert_has effstdin "effort max"
+
+# 21. effort: stdin wins over settings.json (live session beats persisted config)
+echo "[case] effort-stdin-over-settings"
+run_env effstdo "HOME=$FAKE_HOME_N USERPROFILE=$FAKE_HOME_N CCSL_ORDER=effort" \
+  '{"effort":{"level":"low"}}'
+assert_exit0 effstdo
+assert_has   effstdo "effort low"
+assert_lacks effstdo "xhigh"
+
+# 22. effort: ultracode / auto render (stdin never sends them; CCSL_EFFORT can)
+echo "[case] effort-extended-values"
+run_env effext "HOME=$EMPTY_HOME_N USERPROFILE=$EMPTY_HOME_N CCSL_EFFORT=ultracode CCSL_ORDER=effort" '{}'
+assert_exit0 effext
+assert_has effext "effort ultracode"
+run_env effauto "HOME=$EMPTY_HOME_N USERPROFILE=$EMPTY_HOME_N CCSL_EFFORT=auto CCSL_ORDER=effort" '{}'
+assert_exit0 effauto
+assert_has effauto "effort auto"
+
 # ---- cleanup ----
 rm -rf "$GITDIR" "$CLEANDIR" "$TF_1H" "$TF_COLD" "$FAKE_HOME" "$PROJDIR" "$EMPTY_HOME"
 

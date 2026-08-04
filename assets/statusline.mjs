@@ -105,10 +105,12 @@ function git(args) {
 // model (cyan) — always at least "Claude"
 let s_model = model ? `${CYAN}${model}${RST}` : "";
 
-// effort (label gray, value color-scaled to intensity) — read from CC settings.
-// CC does NOT send effort in the stdin JSON; it lives in settings.json's
-// `effortLevel`. Merge three layers (user → project → project-local), later wins,
-// matching CC's own precedence. Env CCSL_EFFORT wins over all for override/tests.
+// effort (label gray, value color-scaled to intensity). Source priority:
+//   1. CCSL_EFFORT env/rc override (tests / manual pin)
+//   2. stdin `effort.level` — live session value, CC v2.1.119+ sends it when the
+//      model supports reasoning effort; reflects runtime /effort switching
+//   3. settings.json `effortLevel` (persisted config) merged user → project →
+//      project-local, later wins, matching CC's own precedence
 function readEffort() {
   const files = [join(homedir(), ".claude", "settings.json")];
   if (cwd) {
@@ -125,8 +127,12 @@ function readEffort() {
   }
   return e;
 }
-const EFFORT_COLOR = { low: 32, medium: 32, high: 33, xhigh: 33, max: 31 };
-const effort = (cfg("CCSL_EFFORT") || readEffort()).toLowerCase();
+const stdinEffort =
+  input.effort && typeof input.effort.level === "string" ? input.effort.level : "";
+const EFFORT_COLOR = {
+  low: 32, medium: 32, high: 33, xhigh: 33, max: 31, ultracode: 31, auto: 37,
+};
+const effort = (cfg("CCSL_EFFORT") || stdinEffort || readEffort()).toLowerCase();
 let s_effort = "";
 if (effort) {
   const ec = EFFORT_COLOR[effort] || 37;

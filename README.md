@@ -19,7 +19,7 @@ Opus 4.8 (1M context) │ $ 4.0488 │ ███████░░░░░░�
 | segment | shows | color |
 | --- | --- | --- |
 | model | active model display name | cyan |
-| effort | reasoning effort (`low`/`medium`/`high`/`xhigh`/`max`) from CC's `effortLevel` | green `low`/`medium` · yellow `high`/`xhigh` · red `max` |
+| effort | reasoning effort from stdin `effort.level` (live) or CC's `effortLevel` (config fallback); values `low`/`medium`/`high`/`xhigh`/`max`/`ultracode`/`auto` | green `low`/`medium` · yellow `high`/`xhigh` · red `max`/`ultracode` · gray `auto` |
 | cost | session cost in USD (`$ 0.0000`) | yellow |
 | ctx | context-window usage bar + % | green `<50%` · yellow `<80%` · red above |
 | cache | prompt-cache TTL countdown (`COLD` when expired) | green, red when expiring |
@@ -65,13 +65,13 @@ CCSL_HIDE="version,duration"
 | `CCSL_BAR_WIDTH` | `18` | width of the context bar, in cells |
 | `CCSL_ORDER` | `model,cost,ctx,cache,git,time,effort` | order of `│`-separated groups; omit a token to drop that whole group; unknown tokens are ignored |
 | `CCSL_HIDE` | *(empty)* | comma list of parts to hide |
-| `CCSL_EFFORT` | *(read from settings)* | override effort value (e.g. `high`); mostly for testing — normally the segment picks up CC's `effortLevel` from `settings.json` automatically |
+| `CCSL_EFFORT` | *(auto: stdin → settings)* | override effort value (e.g. `high`); highest priority — normally the segment picks up CC's live `effort.level` from stdin, falling back to `effortLevel` in settings.json |
 
 **`CCSL_ORDER` tokens:** `model`, `cost`, `ctx`, `cache`, `git` (dir + branch), `time` (duration + version), `effort`.
 
 **`CCSL_HIDE` tokens:** the order tokens above, plus the finer-grained `dir`, `branch`, `duration`, `version`. Hiding `git` hides both dir and branch; hiding `time` hides both duration and version.
 
-**effort source:** Claude Code does not send effort in the statusline stdin JSON — it lives in `effortLevel` inside `settings.json`. The segment reads three layers in CC's own precedence order: `~/.claude/settings.json` → project `.claude/settings.json` → project `.claude/settings.local.json` (later wins). If none set it, the segment is empty and disappears from the line.
+**effort source:** CC v2.1.119+ sends a live `effort.level` in the statusline stdin JSON (only when the model supports reasoning effort) — the segment prefers it, so runtime `/effort` switching shows up immediately. Fallback is `effortLevel` in three `settings.json` layers in CC's own precedence order: `~/.claude/settings.json` → project `.claude/settings.json` → project `.claude/settings.local.json` (later wins). `/effort max` and `/effort ultracode` are runtime-only — `ultracode` reports as `xhigh` on stdin (it *is* xhigh + multi-agent workflows); `/effort auto` reports whatever level the model actually uses. If nothing sets it, the segment is empty and disappears from the line.
 
 ### Examples
 
